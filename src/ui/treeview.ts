@@ -857,6 +857,44 @@ class TreeView {
   }
 
   /**
+   * Adds the rows of every expanded node shown above `target`, so nothing above it is
+   * added later. Walks the tree top to bottom and stops at `target`.
+   * @param target - The node that will be scrolled to.
+   */
+  private _renderRowsAbove(target: TreeNode): void {
+    const visit = (node: TreeNode, el: HTMLElement): boolean => {
+      if (node === target) return true;
+      if (!node.expanded || !node.children) return false;
+      if (!node.rendered) {
+        this.renderNode(node, el);
+        node.rendered = true;
+      }
+      const childrenContainer = el.querySelector(".tv-children");
+      if (!(childrenContainer instanceof HTMLElement)) return false;
+      if (childrenContainer.children.length === 0) {
+        for (const key in node.children) {
+          this.renderPlaceholder(node.children[key], childrenContainer);
+        }
+      }
+      childrenContainer.style.display = "block";
+      const rows = new Map<string, HTMLElement>();
+      for (const child of Array.from(childrenContainer.children)) {
+        if (child instanceof HTMLElement)
+          rows.set(child.dataset.path || "", child);
+      }
+      for (const key in node.children) {
+        const child = node.children[key];
+        const row = rows.get(this.getNodePath(child));
+        if (row && visit(child, row)) return true;
+      }
+      return false;
+    };
+    const root = this.root;
+    const rootEl = root ? this.getDomNode(this.getNodePath(root)) : null;
+    if (root && rootEl) visit(root, rootEl);
+  }
+
+  /**
    * Opens the specified path in the tree view.
    * @param path - The path to open in the tree view.
    */
@@ -894,6 +932,13 @@ class TreeView {
         logger.error(`Path not found: ${current}`);
         break;
       }
+    }
+
+    // Rows are added as they scroll into view, so the rows above the target must all be
+    // there before it is measured: else they are added during the scroll, push the target
+    // down, and the scroll stops above it.
+    if (node) {
+      this._renderRowsAbove(node);
     }
 
     // Final update to sync any remaining state
